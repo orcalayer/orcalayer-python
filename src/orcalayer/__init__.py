@@ -7,6 +7,7 @@ from .errors import (
     PremiumRequiredError,
     RateLimitError,
     ServerError,
+    WalletComputingError,
 )
 
 __version__ = "0.1.0"
@@ -18,5 +19,6 @@ __all__ = [
     "AuthenticationError",
     "RateLimitError",
     "ServerError",
+    "WalletComputingError",
     "__version__",
 ]

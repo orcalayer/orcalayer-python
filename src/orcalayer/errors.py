@@ -31,6 +31,20 @@ class AuthenticationError(OrcaLayerError):
         self.status_code = status_code
 
 
+class WalletComputingError(OrcaLayerError):
+    """The wallet's stats are still being computed server-side (HTTP 202).
+
+    Raised after one automatic retry. Poll again after ``retry_after`` seconds.
+    """
+
+    def __init__(self, retry_after: float):
+        super().__init__(
+            f"Wallet stats are still computing server-side; "
+            f"retry in {retry_after:.0f}s."
+        )
+        self.retry_after = retry_after
+
+
 class RateLimitError(OrcaLayerError):
     """Rate limit still exceeded after all retries (HTTP 429)."""
 

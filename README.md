@@ -45,7 +45,8 @@ All methods return the JSON response as a plain `dict`, exactly as the API sends
 - **Rate limits**: on HTTP 429 the client reads `Retry-After` and retries with exponential backoff (default 3 attempts). Disable with `OrcaLayer(retry_on_rate_limit=False)`.
 - **Transient 502** responses are retried once automatically.
 - **Premium endpoints without a key** raise `PremiumRequiredError` with a link to [pricing](https://orcalayer.com/pricing) — no network call is made.
-- **Wallet overview freshness**: responses include `as_of` (data timestamp) and `degraded` (heavy side-stats timed out, core stats still present). A cold heavy wallet may answer HTTP 202 — retry after the `Retry-After` interval.
+- **Wallet overview freshness**: responses include `as_of` (data timestamp) and `degraded` (heavy side-stats timed out, core stats still present).
+- **Cold heavy wallets** answer HTTP 202 while their stats are computed server-side. The client retries once automatically after the server's `Retry-After` interval; if the wallet is still not ready it raises `WalletComputingError` (carrying `retry_after`) so a 202 body is never mistaken for wallet data.
 
 ## Errors
 

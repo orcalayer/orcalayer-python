@@ -23,6 +23,7 @@ from .errors import (
     PremiumRequiredError,
     RateLimitError,
     ServerError,
+    WalletComputingError,
 )
 
 DEFAULT_BASE_URL = "https://orcalayer.com"
@@ -92,15 +93,33 @@ class OrcaLayer:
         clean = {k: v for k, v in (params or {}).items() if v is not None}
 
         attempt = 0
+        retried_202 = False
         while True:
             try:
                 resp = self._client.get(url, params=clean)
             except httpx.HTTPError as exc:
                 raise OrcaLayerError(f"Request to {url} failed: {exc}") from exc
 
+            if resp.status_code == 202:
+                # Cold heavy wallet: stats are being computed server-side.
+                # One automatic retry after Retry-After, then a typed error
+                # so callers never mistake the 202 body for real data.
+                retry_after = _retry_after_seconds(resp)
+                if retried_202:
+                    raise WalletComputingError(retry_after)
+                retried_202 = True
+                time.sleep(min(retry_after, 60))
+                continue
+
             if resp.status_code == 429:
                 retry_after = _retry_after_seconds(resp)
-                if not self.retry_on_rate_limit or attempt >= self.max_retries:
+                # A Retry-After beyond 5 minutes signals a daily quota, not a
+                # sliding-window burst — retrying within this process is futile.
+                if (
+                    not self.retry_on_rate_limit
+                    or attempt >= self.max_retries
+                    or retry_after > 300
+                ):
                     raise RateLimitError(retry_after, _detail(resp))
                 # Server window is sliding 60s; honour Retry-After and add
                 # exponential backoff across attempts so bursts drain cleanly.
@@ -173,8 +192,10 @@ class OrcaLayer:
         ``address`` is a 0x wallet address or an OrcaLayer nickname.
         The response carries ``as_of`` (data timestamp, epoch seconds) and
         ``degraded`` (True when heavy side-stats timed out; core stats are
-        still present). A cold heavy wallet may answer HTTP 202 — retry
-        after the ``Retry-After`` interval.
+        still present). A cold heavy wallet answers HTTP 202 while its stats
+        are computed: the client retries once automatically after the
+        server's ``Retry-After`` interval and raises ``WalletComputingError``
+        if the wallet is still not ready.
         """
         return self._get(f"wallet/{address}/overview")
 
