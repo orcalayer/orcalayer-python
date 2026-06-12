@@ -17,7 +17,9 @@ from typing import Any
 
 import httpx
 
+from ._version import __version__
 from .errors import (
+    APIError,
     AuthenticationError,
     OrcaLayerError,
     PremiumRequiredError,
@@ -29,7 +31,7 @@ from .errors import (
 DEFAULT_BASE_URL = "https://orcalayer.com"
 PUBLIC_PREFIX = "/api/v2"
 PREMIUM_PREFIX = "/api/public/v1"
-USER_AGENT = "Mozilla/5.0 (compatible; orcalayer-python/0.1.0)"
+USER_AGENT = f"orcalayer-python/{__version__}"
 
 
 class OrcaLayer:
@@ -94,6 +96,7 @@ class OrcaLayer:
 
         attempt = 0
         retried_202 = False
+        retried_502 = False
         while True:
             try:
                 resp = self._client.get(url, params=clean)
@@ -127,20 +130,34 @@ class OrcaLayer:
                 attempt += 1
                 continue
 
-            if resp.status_code == 502 and attempt == 0:
-                # Transient gateway hiccup: a single retry, then give up.
-                attempt += 1
+            if resp.status_code == 502 and not retried_502:
+                # Transient gateway hiccup: a single retry, independent of
+                # the 429 retry budget (a 429->502 sequence gets both).
+                retried_502 = True
                 time.sleep(1)
                 continue
 
             if resp.status_code in (401, 403):
-                raise AuthenticationError(resp.status_code, _detail(resp))
+                hint = (
+                    "" if premium_only
+                    else "Note: this endpoint also works without an API key "
+                         "(anonymous access, lower limits)."
+                )
+                raise AuthenticationError(resp.status_code, _detail(resp), hint=hint)
 
             if resp.status_code >= 500:
                 raise ServerError(resp.status_code, resp.text)
 
-            resp.raise_for_status()
-            return resp.json()
+            if resp.status_code >= 400:
+                # 404/400/422 and friends — typed, with the body preserved.
+                raise APIError(resp.status_code, resp.text)
+
+            try:
+                return resp.json()
+            except ValueError as exc:
+                raise APIError(
+                    resp.status_code, resp.text, note="Response body is not valid JSON."
+                ) from exc
 
     # ── Public endpoints (work with or without a key) ────────────────────
 

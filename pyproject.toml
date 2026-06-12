@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "orcalayer"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Python client for the OrcaLayer API — Polymarket whale and market analytics"
 readme = "README.md"
 license = { text = "MIT" }
@@ -32,3 +32,12 @@ Changelog = "https://github.com/orcalayer/orcalayer-python/blob/main/CHANGELOG.m
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/orcalayer"]
+
+[tool.hatch.version]
+path = "src/orcalayer/_version.py"
+
+[tool.pytest.ini_options]
+markers = ["live: hits the real API over the network"]
+# Bare `pytest` runs offline tests only; use `pytest -m live` for smoke
+# tests against the production API.
+addopts = "-m 'not live'"

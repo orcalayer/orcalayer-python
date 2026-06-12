@@ -22,13 +22,29 @@ class PremiumRequiredError(OrcaLayerError):
 class AuthenticationError(OrcaLayerError):
     """The API key was rejected (HTTP 401/403)."""
 
-    def __init__(self, status_code: int, detail: str = ""):
+    def __init__(self, status_code: int, detail: str = "", hint: str = ""):
         msg = f"API key rejected (HTTP {status_code})."
         if detail:
             msg += f" Server said: {detail}"
         msg += f" Check your key at https://orcalayer.com/settings or get one at {PRICING_URL}."
+        if hint:
+            msg += f" {hint}"
         super().__init__(msg)
         self.status_code = status_code
+
+
+class APIError(OrcaLayerError):
+    """Unexpected API response: an unhandled 4xx, or a body that is not JSON."""
+
+    def __init__(self, status_code: int, body: str = "", note: str = ""):
+        msg = f"Unexpected OrcaLayer API response (HTTP {status_code})."
+        if note:
+            msg += f" {note}"
+        if body:
+            msg += f" Body: {body[:200]}"
+        super().__init__(msg)
+        self.status_code = status_code
+        self.body = body
 
 
 class WalletComputingError(OrcaLayerError):

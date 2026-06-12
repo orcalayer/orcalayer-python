@@ -10,6 +10,8 @@ import pytest
 
 from orcalayer import OrcaLayer, PremiumRequiredError
 
+pytestmark = pytest.mark.live
+
 PREMIUM_KEY = os.environ.get("ORCALAYER_TEST_API_KEY", "")
 # Known active wallet for read-only smoke checks (public leaderboard member).
 TEST_WALLET = os.environ.get("ORCALAYER_TEST_WALLET", "")

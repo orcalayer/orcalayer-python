@@ -3,7 +3,13 @@
 import httpx
 import pytest
 
-from orcalayer import OrcaLayer, RateLimitError, WalletComputingError
+from orcalayer import (
+    APIError,
+    AuthenticationError,
+    OrcaLayer,
+    RateLimitError,
+    WalletComputingError,
+)
 
 
 def make_client(responses: list[httpx.Response]) -> OrcaLayer:
@@ -61,3 +67,41 @@ def test_502_single_retry():
         httpx.Response(200, json={"ok": True}),
     ])
     assert ol.markets(limit=1) == {"ok": True}
+
+
+def test_429_then_502_then_ok():
+    # The 502 retry budget is independent of the 429 budget.
+    ol = make_client([
+        httpx.Response(429, headers={"Retry-After": "1"}, json={"error": "burst"}),
+        httpx.Response(502, text="bad gateway"),
+        httpx.Response(200, json={"ok": True}),
+    ])
+    assert ol.markets(limit=1) == {"ok": True}
+
+
+def test_unhandled_4xx_raises_api_error():
+    ol = make_client([
+        httpx.Response(404, json={"detail": "no such market"}),
+    ])
+    with pytest.raises(APIError) as exc:
+        ol.markets(limit=1)
+    assert exc.value.status_code == 404
+    assert "no such market" in exc.value.body
+
+
+def test_invalid_json_on_200_raises_api_error():
+    ol = make_client([
+        httpx.Response(200, text="<html>not json</html>"),
+    ])
+    with pytest.raises(APIError) as exc:
+        ol.markets(limit=1)
+    assert "not valid JSON" in str(exc.value)
+
+
+def test_401_on_public_endpoint_mentions_anonymous():
+    ol = make_client([
+        httpx.Response(401, json={"error": "Invalid API key"}),
+    ])
+    with pytest.raises(AuthenticationError) as exc:
+        ol.markets(limit=1)
+    assert "without an API key" in str(exc.value)

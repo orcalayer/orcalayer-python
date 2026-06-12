@@ -52,11 +52,30 @@ All methods return the JSON response as a plain `dict`, exactly as the API sends
 
 ## Errors
 
+All exceptions inherit from `orcalayer.OrcaLayerError`, so one `except` catches everything:
+
 ```python
-from orcalayer import PremiumRequiredError, RateLimitError, AuthenticationError, ServerError
+from orcalayer import OrcaLayer, OrcaLayerError, RateLimitError
+
+ol = OrcaLayer()
+try:
+    data = ol.wallet_overview("0x...")
+except RateLimitError as e:
+    print(f"rate limited, retry in {e.retry_after:.0f}s")
+except OrcaLayerError as e:
+    print(f"request failed: {e}")
 ```
 
-All inherit from `orcalayer.OrcaLayerError`.
+| Exception | Raised on |
+|---|---|
+| `PremiumRequiredError` | Premium endpoint called without a key (no network call made) |
+| `AuthenticationError` | Key rejected (HTTP 401/403) |
+| `RateLimitError` | HTTP 429 after retries, or immediately for the daily cap; carries `retry_after` |
+| `WalletComputingError` | Heavy wallet still computing (HTTP 202 twice); carries `retry_after` |
+| `APIError` | Unhandled 4xx (404/400/422) or a non-JSON body; carries `status_code` and `body` |
+| `ServerError` | Unexpected 5xx |
+
+The package ships type hints (`py.typed`).
 
 ## License
 

@@ -18,6 +18,6 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e . pytest ruff
       - run: ruff check .
-      # Offline tests only (httpx.MockTransport). Live smoke tests
-      # (tests/test_smoke.py) hit the real API and stay out of CI.
-      - run: pytest tests/test_retry.py -v
+      # Offline tests only — live smoke tests are behind the `live` pytest
+      # marker and excluded by addopts in pyproject.toml.
+      - run: pytest -v

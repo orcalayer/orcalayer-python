@@ -1,7 +1,9 @@
 """orcalayer — Python client for the OrcaLayer API (https://orcalayer.com)."""
 
+from ._version import __version__
 from .client import OrcaLayer
 from .errors import (
+    APIError,
     AuthenticationError,
     OrcaLayerError,
     PremiumRequiredError,
@@ -10,11 +12,10 @@ from .errors import (
     WalletComputingError,
 )
 
-__version__ = "0.1.0"
-
 __all__ = [
     "OrcaLayer",
     "OrcaLayerError",
+    "APIError",
     "PremiumRequiredError",
     "AuthenticationError",
     "RateLimitError",
