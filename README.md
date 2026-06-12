@@ -1,5 +1,7 @@
 # orcalayer
 
+[![CI](https://github.com/orcalayer/orcalayer-python/actions/workflows/ci.yml/badge.svg)](https://github.com/orcalayer/orcalayer-python/actions/workflows/ci.yml) [![PyPI](https://img.shields.io/pypi/v/orcalayer)](https://pypi.org/project/orcalayer/)
+
 Official Python client for the [OrcaLayer API](https://orcalayer.com) — Polymarket whale and market analytics: wallet P&L, open positions, smart-whale leaderboard, market search and real-time whale alerts.
 
 ## Install
