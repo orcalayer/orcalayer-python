@@ -21,7 +21,7 @@ ol = OrcaLayer()
 print(ol.leaderboard(limit=5))
 ```
 
-With a Premium API key ([get one here](https://orcalayer.com/pricing)) you get a higher rate limit (600 req/min vs 200/min anonymous) and access to Premium endpoints such as whale alerts:
+Anonymous access is limited to 200 requests/min per IP, and wallet endpoints (`wallet_overview`, `wallet_positions`) additionally to 300 requests/day per IP. With a Premium API key ([get one here](https://orcalayer.com/pricing)) you get 600 req/min, no daily cap, and access to Premium endpoints such as whale alerts:
 
 ```python
 ol = OrcaLayer(api_key="ol_your_key")
@@ -42,7 +42,7 @@ All methods return the JSON response as a plain `dict`, exactly as the API sends
 
 ## Behavior notes
 
-- **Rate limits**: on HTTP 429 the client reads `Retry-After` and retries with exponential backoff (default 3 attempts). Disable with `OrcaLayer(retry_on_rate_limit=False)`.
+- **Rate limits**: on HTTP 429 the client reads `Retry-After` and retries with exponential backoff (default 3 attempts). Disable with `OrcaLayer(retry_on_rate_limit=False)`. A `Retry-After` beyond 5 minutes signals the anonymous daily cap rather than a burst — the client then raises `RateLimitError` immediately instead of retrying.
 - **Transient 502** responses are retried once automatically.
 - **Premium endpoints without a key** raise `PremiumRequiredError` with a link to [pricing](https://orcalayer.com/pricing) — no network call is made.
 - **Wallet overview freshness**: responses include `as_of` (data timestamp) and `degraded` (heavy side-stats timed out, core stats still present).
