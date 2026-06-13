@@ -42,6 +42,17 @@ alerts = ol.whale_alerts(minutes=30, min_usd=1000)
 
 All methods return the JSON response as a plain `dict`, exactly as the API sends it. Full field reference: [orcalayer.com/docs](https://orcalayer.com/docs).
 
+## Examples
+
+Runnable scripts in [examples/](examples/) — each is self-contained and runs against the live API:
+
+| Script | What it does | Key |
+|---|---|---|
+| [find_top_whales.py](examples/find_top_whales.py) | Top smart-money whales in a category, via the leaderboard | No |
+| [track_wallet.py](examples/track_wallet.py) | A wallet's profile, stats and open positions | No |
+| [find_consensus_markets.py](examples/find_consensus_markets.py) | Markets where smart whales are clustering, with filters | No |
+| [whale_alerts_feed.py](examples/whale_alerts_feed.py) | Recent smart-whale trades feed (shows the Premium path) | Yes |
+
 ## Behavior notes
 
 - **Rate limits**: on HTTP 429 the client reads `Retry-After` and retries with exponential backoff (default 3 attempts). Disable with `OrcaLayer(retry_on_rate_limit=False)`. A `Retry-After` beyond 5 minutes signals the anonymous daily cap rather than a burst — the client then raises `RateLimitError` immediately instead of retrying.
