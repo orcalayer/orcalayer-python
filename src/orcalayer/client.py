@@ -47,6 +47,9 @@ class OrcaLayer:
             exponential backoff. Set False to raise ``RateLimitError``
             immediately.
         max_retries: Maximum retry attempts for 429 responses.
+        user_agent_suffix: Optional token appended to the ``User-Agent``
+            header (e.g. ``orcalayer-mcp/0.1.1``) so server-side logs can
+            attribute traffic to a specific frontend. Omit for plain SDK use.
 
     Example:
         >>> from orcalayer import OrcaLayer
@@ -62,12 +65,16 @@ class OrcaLayer:
         timeout: float = 30.0,
         retry_on_rate_limit: bool = True,
         max_retries: int = 3,
+        user_agent_suffix: str | None = None,
     ):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.retry_on_rate_limit = retry_on_rate_limit
         self.max_retries = max_retries
-        headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
+        user_agent = (
+            f"{USER_AGENT} {user_agent_suffix}" if user_agent_suffix else USER_AGENT
+        )
+        headers = {"User-Agent": user_agent, "Accept": "application/json"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
         self._client = httpx.Client(timeout=timeout, headers=headers)
@@ -80,6 +87,7 @@ class OrcaLayer:
         params: dict[str, Any] | None = None,
         *,
         premium_only: bool = False,
+        poll: bool = True,
     ) -> dict:
         """GET ``path`` (no leading slash) and return the parsed JSON dict.
 
@@ -87,6 +95,12 @@ class OrcaLayer:
         (``/api/public/v1``, Bearer auth, higher rate limit). Without a key,
         public endpoints go to ``/api/v2`` and Premium-only endpoints raise
         ``PremiumRequiredError``.
+
+        ``poll`` controls cold-wallet (HTTP 202) handling. When True (default)
+        the client waits one ``Retry-After`` interval and retries once before
+        raising ``WalletComputingError``. When False it raises immediately on
+        the first 202 without sleeping — for callers (e.g. an MCP server) that
+        must stay non-blocking and surface a "computing, retry later" notice.
         """
         if premium_only and not self.api_key:
             raise PremiumRequiredError(path)
@@ -105,10 +119,11 @@ class OrcaLayer:
 
             if resp.status_code == 202:
                 # Cold heavy wallet: stats are being computed server-side.
-                # One automatic retry after Retry-After, then a typed error
-                # so callers never mistake the 202 body for real data.
+                # With poll=True, one automatic retry after Retry-After, then a
+                # typed error so callers never mistake the 202 body for real
+                # data. With poll=False, raise at once without sleeping.
                 retry_after = _retry_after_seconds(resp)
-                if retried_202:
+                if not poll or retried_202:
                     raise WalletComputingError(retry_after)
                 retried_202 = True
                 time.sleep(min(retry_after, 60))
@@ -203,18 +218,22 @@ class OrcaLayer:
             },
         )
 
-    def wallet_overview(self, address: str) -> dict:
+    def wallet_overview(self, address: str, *, poll: bool = True) -> dict:
         """Wallet profile and trading stats.
 
         ``address`` is a 0x wallet address or an OrcaLayer nickname.
         The response carries ``as_of`` (data timestamp, epoch seconds) and
         ``degraded`` (True when heavy side-stats timed out; core stats are
         still present). A cold heavy wallet answers HTTP 202 while its stats
-        are computed: the client retries once automatically after the
-        server's ``Retry-After`` interval and raises ``WalletComputingError``
-        if the wallet is still not ready.
+        are computed.
+
+        ``poll`` (default True): wait one ``Retry-After`` interval and retry
+        once, then raise ``WalletComputingError`` if still not ready. Set
+        False to raise ``WalletComputingError`` immediately on the first 202
+        without blocking — for non-blocking callers that surface a
+        "computing, retry later" notice themselves.
         """
-        return self._get(f"wallet/{address}/overview")
+        return self._get(f"wallet/{address}/overview", poll=poll)
 
     def wallet_positions(self, address: str, *, limit: int = 200, offset: int = 0) -> dict:
         """Open positions for a wallet (sorted by current value, cap 500/page)."""
