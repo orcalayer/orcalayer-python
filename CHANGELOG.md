@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1 — 2026-07-02
+
+- Public fallback is now sticky per client: after a key is rejected once on a
+  public endpoint, later public calls skip auth and go straight to `/api/v2`,
+  so a bad key no longer costs a doubled round-trip on every public call.
+  Premium-only endpoints still send the key.
+- Docs: example API keys use the real `sk_orca_` prefix.
+
 ## 0.2.0 — 2026-07-02
 
 - Public fallback for rejected keys: when a bad, expired or non-Premium

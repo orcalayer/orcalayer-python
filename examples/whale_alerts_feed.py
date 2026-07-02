@@ -2,9 +2,9 @@
 
 This is a PREMIUM endpoint and requires an API key. Get one at
 https://orcalayer.com/pricing and pass it via the ORCALAYER_API_KEY
-environment variable (or edit API_KEY below — replace "ol_your_key"):
+environment variable (or edit API_KEY below — replace "sk_orca_..."):
 
-    ORCALAYER_API_KEY=ol_your_key python whale_alerts_feed.py
+    ORCALAYER_API_KEY=sk_orca_... python whale_alerts_feed.py
 
 Run it WITHOUT a key and the client raises PremiumRequiredError before any
 network call — this script catches it and points you to pricing.
@@ -15,7 +15,7 @@ import os
 from orcalayer import AuthenticationError, OrcaLayer, PremiumRequiredError
 
 # Leave as None to demonstrate the no-key path; set ORCALAYER_API_KEY (or
-# replace None with "ol_your_key") to hit the live premium endpoint.
+# replace None with "sk_orca_...") to hit the live premium endpoint.
 API_KEY = os.environ.get("ORCALAYER_API_KEY") or None
 
 

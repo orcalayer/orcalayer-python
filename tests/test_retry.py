@@ -155,3 +155,25 @@ def test_max_total_seconds_stops_retrying():
     with pytest.raises(RateLimitError) as exc:
         ol.markets(limit=1)
     assert exc.value.retry_after == 10
+
+
+def test_public_fallback_is_sticky():
+    # After a key is rejected once on a public endpoint, later public calls skip
+    # auth (a single anonymous request) instead of re-hitting the premium surface.
+    seen: list[tuple[str, str | None]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((str(request.url), request.headers.get("Authorization")))
+        if "/api/public/v1/" in str(request.url):
+            return httpx.Response(403, json={"error": "not premium"})
+        return httpx.Response(200, json={"ok": True})
+
+    ol = OrcaLayer(api_key="bad-key")
+    ol._client = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        headers={"Authorization": "Bearer bad-key"},
+    )
+    ol.markets(limit=1)      # premium 403 -> falls back to public (2 requests)
+    ol.leaderboard(limit=1)  # sticky: straight to public, no second premium hit
+    assert len(seen) == 3
+    assert "/api/v2/" in seen[2][0] and seen[2][1] is None

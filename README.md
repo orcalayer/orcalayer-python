@@ -26,7 +26,7 @@ print(ol.leaderboard(limit=5))
 Anonymous access is limited to 200 requests/min per IP, and wallet endpoints (`wallet_overview`, `wallet_positions`) additionally to 300 requests/day per IP. With a Premium API key ([get one here](https://orcalayer.com/pricing)) you get 600 req/min, no daily cap, and access to Premium endpoints such as whale alerts:
 
 ```python
-ol = OrcaLayer(api_key="ol_your_key")
+ol = OrcaLayer(api_key="sk_orca_...")
 alerts = ol.whale_alerts(minutes=30, min_usd=1000)
 ```
 

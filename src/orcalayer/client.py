@@ -86,6 +86,7 @@ class OrcaLayer:
         self.max_retries = max_retries
         self.max_total_seconds = max_total_seconds
         self._warned_public_fallback = False
+        self._public_fallback_sticky = False
         user_agent = (
             f"{USER_AGENT} {user_agent_suffix}" if user_agent_suffix else USER_AGENT
         )
@@ -134,7 +135,10 @@ class OrcaLayer:
             else time.monotonic() + self.max_total_seconds
         )
 
-        use_auth = bool(self.api_key)
+        # Once a key has been rejected on a public endpoint, skip auth on later
+        # public calls too, so a bad key does not cost a doubled round-trip every
+        # time. Premium-only endpoints still send the key.
+        use_auth = bool(self.api_key) and not (self._public_fallback_sticky and not premium_only)
         fell_back = False
         attempt = 0
         retried_202 = False
@@ -199,6 +203,7 @@ class OrcaLayer:
                 if not premium_only and use_auth and not fell_back:
                     fell_back = True
                     use_auth = False
+                    self._public_fallback_sticky = True
                     self._warn_public_fallback(resp.status_code)
                     continue
                 hint = (
