@@ -105,3 +105,53 @@ def test_401_on_public_endpoint_mentions_anonymous():
     with pytest.raises(AuthenticationError) as exc:
         ol.markets(limit=1)
     assert "without an API key" in str(exc.value)
+
+
+def test_key_rejected_on_public_falls_back_to_anonymous():
+    # A bad key 403s the Premium surface; the client retries once anonymously
+    # on /api/v2 (no auth header) and returns the public data.
+    seen: list[tuple[str, str | None]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((str(request.url), request.headers.get("Authorization")))
+        if len(seen) == 1:
+            return httpx.Response(403, json={"error": "not premium"})
+        return httpx.Response(200, json={"ok": True})
+
+    ol = OrcaLayer(api_key="bad-key")
+    ol._client = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        headers={"Authorization": "Bearer bad-key"},
+    )
+    assert ol.markets(limit=1) == {"ok": True}
+    assert len(seen) == 2
+    assert "/api/public/v1/" in seen[0][0] and seen[0][1] == "Bearer bad-key"
+    assert "/api/v2/" in seen[1][0] and seen[1][1] is None
+
+
+def test_premium_endpoint_403_does_not_fall_back():
+    ol = make_client([httpx.Response(403, json={"error": "no premium plan"})])
+    ol.api_key = "somekey"  # a keyed client hitting a Premium-only endpoint
+    with pytest.raises(AuthenticationError) as exc:
+        ol.whale_alerts(minutes=5)
+    assert exc.value.status_code == 403
+
+
+def test_retry_after_accepts_http_date():
+    from datetime import datetime, timedelta, timezone
+    from email.utils import format_datetime
+
+    from orcalayer.client import _retry_after_seconds
+
+    when = datetime.now(timezone.utc) + timedelta(seconds=30)
+    resp = httpx.Response(429, headers={"Retry-After": format_datetime(when)})
+    assert 20 <= _retry_after_seconds(resp) <= 31
+
+
+def test_max_total_seconds_stops_retrying():
+    # A retry that would sleep past the budget raises instead of blocking.
+    ol = make_client([httpx.Response(429, headers={"Retry-After": "10"}, json={"error": "burst"})])
+    ol.max_total_seconds = 1.0
+    with pytest.raises(RateLimitError) as exc:
+        ol.markets(limit=1)
+    assert exc.value.retry_after == 10

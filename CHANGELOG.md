@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.0 — 2026-07-02
+
+- Public fallback for rejected keys: when a bad, expired or non-Premium
+  `api_key` is rejected (HTTP 401/403) on a **public** endpoint, the client now
+  retries the call once anonymously against `/api/v2` and logs a one-time
+  warning, instead of failing a call that works without a key. Premium-only
+  endpoints (`whale_alerts`) still raise `AuthenticationError` at once.
+- New `max_total_seconds` constructor option: an overall wall-clock budget
+  across all retries for a single call. A retry that would sleep past the
+  budget raises the pending typed error instead of blocking (worst-case
+  202+429+502 chains could previously stall for minutes).
+- `Retry-After` now also accepts an HTTP-date (RFC 9110), not just a number of
+  seconds.
+- `wallet_positions` docstring corrected: the API returns the full open-position
+  set in one response and ignores `limit`/`offset` and ordering — page/sort
+  client-side.
+
 ## 0.1.1 — 2026-06-13
 
 - HTTP 202 contract for cold heavy wallets: one automatic retry after

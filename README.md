@@ -36,7 +36,7 @@ alerts = ol.whale_alerts(minutes=30, min_usd=1000)
 |---|---|---|
 | `leaderboard(sort, category, limit, ...)` | Smart-whale leaderboard with server-side filters | Public |
 | `wallet_overview(address)` | Wallet profile + trading stats (accepts 0x address or nickname) | Public |
-| `wallet_positions(address, limit, offset)` | Open positions, sorted by current value | Public |
+| `wallet_positions(address)` | Open positions — full set in one response (the API ignores `limit`/`offset` and ordering; sort client-side) | Public |
 | `markets(q, category, min_volume, ...)` | Market search (accepts free text or a Polymarket URL) | Public |
 | `whale_alerts(minutes, min_usd, ...)` | Recent smart-whale trades feed | Premium |
 
@@ -58,6 +58,8 @@ Runnable scripts in [examples/](examples/) — each is self-contained and runs a
 - **Rate limits**: on HTTP 429 the client reads `Retry-After` and retries with exponential backoff (default 3 attempts). Disable with `OrcaLayer(retry_on_rate_limit=False)`. A `Retry-After` beyond 5 minutes signals the anonymous daily cap rather than a burst — the client then raises `RateLimitError` immediately instead of retrying.
 - **Transient 502** responses are retried once automatically.
 - **Premium endpoints without a key** raise `PremiumRequiredError` with a link to [pricing](https://orcalayer.com/pricing) — no network call is made.
+- **A rejected key on a public endpoint** (HTTP 401/403) does not fail the call: the client retries once anonymously against the public surface (lower rate limits) and logs a one-time warning. Premium-only endpoints (`whale_alerts`) still raise `AuthenticationError`. So a bad, expired or non-Premium key never breaks a call that works without one.
+- **Overall retry budget**: `OrcaLayer(max_total_seconds=N)` caps the total time spent sleeping across a single call's retries — a back-off that would exceed the budget raises the pending typed error instead of blocking. Unset (the default) means no cap, so a worst-case 202 + 429 + 502 chain can sleep for minutes; set it when you need a bounded call.
 - **Wallet overview freshness**: responses include `as_of` (data timestamp) and `degraded` (heavy side-stats timed out, core stats still present).
 - **Cold heavy wallets** answer HTTP 202 while their stats are computed server-side. The client retries once automatically after the server's `Retry-After` interval; if the wallet is still not ready it raises `WalletComputingError` (carrying `retry_after`) so a 202 body is never mistaken for wallet data.
 
@@ -80,7 +82,7 @@ except OrcaLayerError as e:
 | Exception | Raised on |
 |---|---|
 | `PremiumRequiredError` | Premium endpoint called without a key (no network call made) |
-| `AuthenticationError` | Key rejected (HTTP 401/403) |
+| `AuthenticationError` | Key rejected (HTTP 401/403) on a Premium-only endpoint — on public endpoints a rejected key falls back to anonymous access instead of raising |
 | `RateLimitError` | HTTP 429 after retries, or immediately for the daily cap; carries `retry_after` |
 | `WalletComputingError` | Heavy wallet still computing (HTTP 202 twice); carries `retry_after` |
 | `APIError` | Unhandled 4xx (404/400/422) or a non-JSON body; carries `status_code` and `body` |

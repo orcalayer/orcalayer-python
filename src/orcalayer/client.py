@@ -12,7 +12,10 @@ API sends, no client-side reshaping.
 
 from __future__ import annotations
 
+import logging
 import time
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 import httpx
@@ -47,9 +50,18 @@ class OrcaLayer:
             exponential backoff. Set False to raise ``RateLimitError``
             immediately.
         max_retries: Maximum retry attempts for 429 responses.
+        max_total_seconds: Optional overall wall-clock budget across all retries
+            for a single call. When a retry would sleep past this budget the
+            pending typed error (``WalletComputingError`` / ``RateLimitError`` /
+            ``ServerError``) is raised instead of blocking. ``None`` (default) =
+            no overall cap (each request is still bounded by ``timeout``).
         user_agent_suffix: Optional token appended to the ``User-Agent``
             header (e.g. ``orcalayer-mcp/0.1.1``) so server-side logs can
             attribute traffic to a specific frontend. Omit for plain SDK use.
+
+    A bad or non-Premium ``api_key`` no longer breaks public calls: if a key is
+    rejected (401/403) on a non-Premium-only endpoint, the client retries once
+    anonymously against the public surface and logs a one-time warning.
 
     Example:
         >>> from orcalayer import OrcaLayer
@@ -65,12 +77,15 @@ class OrcaLayer:
         timeout: float = 30.0,
         retry_on_rate_limit: bool = True,
         max_retries: int = 3,
+        max_total_seconds: float | None = None,
         user_agent_suffix: str | None = None,
     ):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.retry_on_rate_limit = retry_on_rate_limit
         self.max_retries = max_retries
+        self.max_total_seconds = max_total_seconds
+        self._warned_public_fallback = False
         user_agent = (
             f"{USER_AGENT} {user_agent_suffix}" if user_agent_suffix else USER_AGENT
         )
@@ -96,24 +111,43 @@ class OrcaLayer:
         public endpoints go to ``/api/v2`` and Premium-only endpoints raise
         ``PremiumRequiredError``.
 
+        If a key is rejected (HTTP 401/403) on a **non**-Premium-only endpoint,
+        the client retries the call once anonymously against the public
+        ``/api/v2`` surface (lower rate limits) and logs a one-time warning, so
+        a bad or expired key never breaks a call that would work without one.
+        Premium-only endpoints keep raising ``AuthenticationError`` at once.
+
         ``poll`` controls cold-wallet (HTTP 202) handling. When True (default)
         the client waits one ``Retry-After`` interval and retries once before
         raising ``WalletComputingError``. When False it raises immediately on
         the first 202 without sleeping — for callers (e.g. an MCP server) that
         must stay non-blocking and surface a "computing, retry later" notice.
+
+        When ``max_total_seconds`` is set, a retry that would sleep past that
+        overall budget raises the pending typed error instead of blocking.
         """
         if premium_only and not self.api_key:
             raise PremiumRequiredError(path)
-        prefix = PREMIUM_PREFIX if self.api_key else PUBLIC_PREFIX
-        url = f"{self.base_url}{prefix}/{path}"
         clean = {k: v for k, v in (params or {}).items() if v is not None}
+        deadline = (
+            None if self.max_total_seconds is None
+            else time.monotonic() + self.max_total_seconds
+        )
 
+        use_auth = bool(self.api_key)
+        fell_back = False
         attempt = 0
         retried_202 = False
         retried_502 = False
         while True:
+            prefix = PREMIUM_PREFIX if use_auth else PUBLIC_PREFIX
+            url = f"{self.base_url}{prefix}/{path}"
+            request = self._client.build_request("GET", url, params=clean)
+            if not use_auth:
+                # Anonymous call: drop the Bearer header the client carries.
+                request.headers.pop("Authorization", None)
             try:
-                resp = self._client.get(url, params=clean)
+                resp = self._client.send(request)
             except httpx.HTTPError as exc:
                 raise OrcaLayerError(f"Request to {url} failed: {exc}") from exc
 
@@ -126,7 +160,9 @@ class OrcaLayer:
                 if not poll or retried_202:
                     raise WalletComputingError(retry_after)
                 retried_202 = True
-                time.sleep(min(retry_after, 60))
+                self._sleep_within(
+                    min(retry_after, 60), deadline, WalletComputingError(retry_after)
+                )
                 continue
 
             if resp.status_code == 429:
@@ -141,7 +177,11 @@ class OrcaLayer:
                     raise RateLimitError(retry_after, _detail(resp))
                 # Server window is sliding 60s; honour Retry-After and add
                 # exponential backoff across attempts so bursts drain cleanly.
-                time.sleep(min(max(retry_after, 2.0 ** attempt), 120.0))
+                self._sleep_within(
+                    min(max(retry_after, 2.0 ** attempt), 120.0),
+                    deadline,
+                    RateLimitError(retry_after, _detail(resp)),
+                )
                 attempt += 1
                 continue
 
@@ -149,10 +189,18 @@ class OrcaLayer:
                 # Transient gateway hiccup: a single retry, independent of
                 # the 429 retry budget (a 429->502 sequence gets both).
                 retried_502 = True
-                time.sleep(1)
+                self._sleep_within(1, deadline, ServerError(502, resp.text))
                 continue
 
             if resp.status_code in (401, 403):
+                # A key rejected on a non-Premium-only endpoint: fall back to
+                # anonymous public access once, rather than failing a call that
+                # would have worked without a key at all.
+                if not premium_only and use_auth and not fell_back:
+                    fell_back = True
+                    use_auth = False
+                    self._warn_public_fallback(resp.status_code)
+                    continue
                 hint = (
                     "" if premium_only
                     else "Note: this endpoint also works without an API key "
@@ -173,6 +221,27 @@ class OrcaLayer:
                 raise APIError(
                     resp.status_code, resp.text, note="Response body is not valid JSON."
                 ) from exc
+
+    def _sleep_within(
+        self, seconds: float, deadline: float | None, on_timeout: OrcaLayerError
+    ) -> None:
+        """Sleep ``seconds`` unless it would pass the overall deadline — then
+        raise the pending typed error instead of blocking past the budget."""
+        if deadline is not None and time.monotonic() + seconds > deadline:
+            raise on_timeout
+        time.sleep(seconds)
+
+    def _warn_public_fallback(self, status_code: int) -> None:
+        """Warn once per client that a rejected key fell back to public access."""
+        if self._warned_public_fallback:
+            return
+        self._warned_public_fallback = True
+        logging.getLogger("orcalayer").warning(
+            "API key rejected (HTTP %s) on the Premium surface; falling back to "
+            "anonymous public access at lower rate limits. If you expect Premium "
+            "access, check your key at https://orcalayer.com/settings.",
+            status_code,
+        )
 
     # ── Public endpoints (work with or without a key) ────────────────────
 
@@ -236,7 +305,14 @@ class OrcaLayer:
         return self._get(f"wallet/{address}/overview", poll=poll)
 
     def wallet_positions(self, address: str, *, limit: int = 200, offset: int = 0) -> dict:
-        """Open positions for a wallet (sorted by current value, cap 500/page)."""
+        """Open positions for a wallet.
+
+        Returns the wallet's full set of open positions in one response, under
+        ``positions`` (with a ``count``). Note: the API currently **ignores**
+        ``limit`` and ``offset`` and does **not** guarantee ordering — do any
+        paging or sorting (e.g. by ``current_value``, descending) client-side.
+        The parameters are accepted for forward compatibility.
+        """
         return self._get(
             f"wallet/{address}/positions", {"limit": limit, "offset": offset}
         )
@@ -326,10 +402,21 @@ class OrcaLayer:
 
 
 def _retry_after_seconds(resp: httpx.Response) -> float:
+    raw = resp.headers.get("Retry-After", "60")
     try:
-        return max(1.0, float(resp.headers.get("Retry-After", "60")))
+        return max(1.0, float(raw))
     except ValueError:
-        return 60.0
+        pass
+    # RFC 9110 also allows Retry-After as an HTTP-date; parse it to a delay.
+    try:
+        dt = parsedate_to_datetime(raw)
+    except (TypeError, ValueError):
+        dt = None
+    if dt is not None:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return max(1.0, (dt - datetime.now(timezone.utc)).total_seconds())
+    return 60.0
 
 
 def _detail(resp: httpx.Response) -> str:
