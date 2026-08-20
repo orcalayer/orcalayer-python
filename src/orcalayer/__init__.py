@@ -13,11 +13,11 @@ from .errors import (
 )
 
 __all__ = [
+    "APIError",
+    "AuthenticationError",
     "OrcaLayer",
     "OrcaLayerError",
-    "APIError",
     "PremiumRequiredError",
-    "AuthenticationError",
     "RateLimitError",
     "ServerError",
     "WalletComputingError",

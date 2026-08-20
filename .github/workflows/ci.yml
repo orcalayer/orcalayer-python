@@ -16,7 +16,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: pip install -e . pytest ruff
+      - run: pip install -e . pytest "ruff==0.15.*"
       - run: ruff check .
       # Offline tests only — live smoke tests are behind the `live` pytest
       # marker and excluded by addopts in pyproject.toml.

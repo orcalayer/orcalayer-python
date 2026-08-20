@@ -416,7 +416,7 @@ class OrcaLayer:
     def close(self) -> None:
         self._client.close()
 
-    def __enter__(self) -> "OrcaLayer":
+    def __enter__(self) -> OrcaLayer:
         return self
 
     def __exit__(self, *exc) -> None:
