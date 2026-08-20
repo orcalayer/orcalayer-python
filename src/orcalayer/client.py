@@ -358,6 +358,23 @@ class OrcaLayer:
             },
         )
 
+    def market(self, market: str) -> dict:
+        """One market's detail: prices, smart-money consensus and whale teams.
+
+        Args:
+            market: Market id, Polymarket slug, or 0x condition id — the
+                endpoint resolves all three.
+
+        Returns the market record (question, YES/NO prices, volume, end date),
+        the smart-whale head-count consensus (``whales``), the top whale teams
+        per side (``yes_team`` / ``no_team``), uncapped per-side totals —
+        smart-money capital (``yes_team_total_invested`` /
+        ``no_team_total_invested``) and all-tracked-whales capital
+        (``yes_team_size_total_invested`` / ``no_team_size_total_invested``) —
+        plus 24h smart-money activity (``smart_money_24h``).
+        """
+        return self._get(f"market/{market}")
+
     # ── Premium endpoints (API key required) ─────────────────────────────
 
     def whale_alerts(
