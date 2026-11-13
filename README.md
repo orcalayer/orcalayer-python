@@ -2,7 +2,9 @@
 
 [![CI](https://github.com/orcalayer/orcalayer-python/actions/workflows/ci.yml/badge.svg)](https://github.com/orcalayer/orcalayer-python/actions/workflows/ci.yml) [![PyPI](https://img.shields.io/pypi/v/orcalayer)](https://pypi.org/project/orcalayer/)
 
-Official Python client for the [OrcaLayer API](https://orcalayer.com) — Polymarket whale and market analytics: wallet P&L, open positions, smart-whale leaderboard, market search and real-time whale alerts.
+Python client for the [OrcaLayer](https://orcalayer.com) Polymarket smart money and whale analytics API: wallet P&L and win rate, open positions, the smart money leaderboard, market search and real-time whale alerts.
+
+OrcaLayer is an analytics layer on top of Polymarket's free Data API: the official API returns raw trades, positions and P&L, and OrcaLayer returns what you would otherwise compute from them: win rate per resolved market, smart money, farmer and bot flags, smart money consensus on each market, and whale alerts. [What it adds over the official API](https://orcalayer.com/solutions/polymarket-smart-money-api).
 
 ## Install
 

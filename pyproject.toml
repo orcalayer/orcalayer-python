@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "orcalayer"
 dynamic = ["version"]
-description = "Python client for the OrcaLayer API — Polymarket whale and market analytics"
+description = "Python client for the OrcaLayer Polymarket smart money and whale analytics API"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
