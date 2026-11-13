@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.3 (2026-11-13)
+
+- Package description and README: the client for the OrcaLayer Polymarket smart money and whale
+  analytics API, an analytics layer on top of Polymarket's free Data API. No code changes.
+
+## 0.2.2
+
+- `market()`: one market's detail by market id, Polymarket slug or 0x condition id, with prices,
+  the whale head-count, top teams per side, smart-money and all-whales invested capital per side and
+  24h smart-money activity.
+
 ## 0.2.1 — 2026-07-02
 
 - Public fallback is now sticky per client: after a key is rejected once on a
